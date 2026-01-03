@@ -91,7 +91,7 @@ export class MarkdownPracticeSource extends FileSource {
     // Create document for each practice
     for (const practice of practices) {
       const doc: Document = {
-        id: this.generateId(relativePath, practice.id),
+        id: this.createPracticeId(relativePath, practice.id),
         type: 'practice',
         content: this.formatPracticeContent(practice),
         title: practice.title,
@@ -398,7 +398,7 @@ export class MarkdownPracticeSource extends FileSource {
   /**
    * Generate unique ID
    */
-  protected generateId(relativePath: string, practiceId: string): string {
+  private createPracticeId(relativePath: string, practiceId: string): string {
     return `${this.name}:${relativePath}#${practiceId}`;
   }
 }

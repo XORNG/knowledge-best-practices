@@ -3,7 +3,7 @@ import * as path from 'path';
 import { glob } from 'glob';
 import * as yaml from 'js-yaml';
 import {
-  BaseSource,
+  FileSource,
   type SourceContext,
   type SourceResult,
   type Document,
@@ -13,15 +13,13 @@ import { PracticeSchema, StyleGuideSchema, type SourceConfig, type Practice, typ
 /**
  * Source for loading structured practice definitions from JSON/YAML files
  */
-export class StructuredPracticeSource extends BaseSource {
+export class StructuredPracticeSource extends FileSource {
   private config: SourceConfig;
   private documentCache: Map<string, Document> = new Map();
-  private basePath: string;
 
   constructor(config: SourceConfig) {
-    super(config.name, `Structured practices from ${config.path}`);
+    super(config.name, `Structured practices from ${config.path}`, config.path);
     this.config = config;
-    this.basePath = config.path;
   }
 
   async connect(context: SourceContext): Promise<void> {

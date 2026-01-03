@@ -2,12 +2,10 @@ import {
   BaseKnowledgeProvider,
   type KnowledgeQuery,
   type KnowledgeResult,
-  type SubAgentMetadata,
-  type SubAgentConfig,
   type KnowledgeProviderConfig,
   type Document,
 } from '@xorng/template-knowledge';
-import { createToolHandler } from '@xorng/template-base';
+import { createToolHandler, type SubAgentMetadata, type SubAgentConfig } from '@xorng/template-base';
 import { z } from 'zod';
 import type { ProviderConfig, PracticeQuery, SourceConfig, Practice, PracticeCategory, PracticeSeverity } from '../types/index.js';
 import { MarkdownPracticeSource } from '../sources/MarkdownPracticeSource.js';
@@ -23,7 +21,7 @@ import { StructuredPracticeSource } from '../sources/StructuredPracticeSource.js
  * - Returns actionable practices with examples
  */
 export class BestPracticesProvider extends BaseKnowledgeProvider {
-  private providerConfig: ProviderConfig;
+  private practiceConfig: ProviderConfig;
 
   constructor(
     config: ProviderConfig,
@@ -47,10 +45,10 @@ export class BestPracticesProvider extends BaseKnowledgeProvider {
 
     super(fullMetadata, subAgentConfig, knowledgeConfig);
     
-    this.providerConfig = config;
+    this.practiceConfig = config;
 
     // Register sources
-    this.initializeSources(config.sources);
+    this.setupSources(config.sources);
 
     // Register practice-specific tools
     this.registerPracticeTools();
@@ -59,7 +57,7 @@ export class BestPracticesProvider extends BaseKnowledgeProvider {
   /**
    * Initialize sources from configuration
    */
-  private initializeSources(sources: SourceConfig[]): void {
+  private setupSources(sources: SourceConfig[]): void {
     for (const sourceConfig of sources) {
       let source;
       
@@ -95,7 +93,7 @@ export class BestPracticesProvider extends BaseKnowledgeProvider {
     const result = await this.search({
       query: query.query,
       filters,
-      limit: query.limit || this.providerConfig.maxResults,
+      limit: query.limit || this.practiceConfig.maxResults,
     });
 
     // Additional filtering by category/severity
