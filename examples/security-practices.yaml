@@ -1,0 +1,197 @@
+name: Security Best Practices
+version: "1.0"
+language: general
+description: Security practices applicable across languages and frameworks
+
+practices:
+  - id: validate-all-input
+    title: Validate all user input
+    description: |
+      Never trust user input. Validate, sanitize, and escape all input from
+      users, including form data, URL parameters, headers, and cookies.
+    category: security
+    severity: error
+    goodExample: |
+      import { z } from 'zod';
+      
+      const userSchema = z.object({
+        email: z.string().email(),
+        age: z.number().min(0).max(150),
+        name: z.string().min(1).max(100),
+      });
+      
+      function createUser(input: unknown) {
+        const validated = userSchema.parse(input);
+        return db.users.create(validated);
+      }
+    badExample: |
+      function createUser(input: any) {
+        return db.users.create(input); // SQL injection risk!
+      }
+    rationale: |
+      Unvalidated input is the root cause of injection attacks (SQL, XSS, 
+      command injection), buffer overflows, and many other vulnerabilities.
+    lintRules:
+      - "@typescript-eslint/no-explicit-any"
+    tags:
+      - input-validation
+      - injection
+
+  - id: use-parameterized-queries
+    title: Use parameterized queries for database operations
+    description: |
+      Never concatenate user input into SQL queries. Use parameterized queries
+      or an ORM that handles escaping automatically.
+    category: security
+    severity: error
+    goodExample: |
+      // Using parameterized query
+      const user = await db.query(
+        'SELECT * FROM users WHERE email = $1',
+        [email]
+      );
+      
+      // Using ORM
+      const user = await prisma.user.findUnique({
+        where: { email }
+      });
+    badExample: |
+      // NEVER do this - SQL injection vulnerability!
+      const user = await db.query(
+        `SELECT * FROM users WHERE email = '${email}'`
+      );
+    rationale: |
+      String concatenation in SQL queries allows attackers to inject malicious
+      SQL code, potentially accessing or modifying any data in the database.
+    tags:
+      - sql-injection
+      - database
+
+  - id: hash-passwords-properly
+    title: Hash passwords with bcrypt or argon2
+    description: |
+      Never store passwords in plain text or use weak hashing algorithms.
+      Use bcrypt, scrypt, or argon2 with appropriate cost factors.
+    category: security
+    severity: error
+    goodExample: |
+      import bcrypt from 'bcrypt';
+      
+      const SALT_ROUNDS = 12;
+      
+      async function hashPassword(password: string): Promise<string> {
+        return bcrypt.hash(password, SALT_ROUNDS);
+      }
+      
+      async function verifyPassword(password: string, hash: string): Promise<boolean> {
+        return bcrypt.compare(password, hash);
+      }
+    badExample: |
+      import crypto from 'crypto';
+      
+      // MD5 is broken for password hashing!
+      function hashPassword(password: string): string {
+        return crypto.createHash('md5').update(password).digest('hex');
+      }
+    rationale: |
+      Weak hashing allows attackers to crack passwords using rainbow tables
+      or brute force. bcrypt/argon2 are designed to be slow and include salts.
+    tags:
+      - passwords
+      - hashing
+      - authentication
+
+  - id: implement-rate-limiting
+    title: Implement rate limiting for APIs
+    description: |
+      Rate limit API endpoints to prevent brute force attacks, DoS, and abuse.
+      Use different limits for different endpoint types.
+    category: security
+    severity: warning
+    goodExample: |
+      import rateLimit from 'express-rate-limit';
+      
+      const authLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 5, // 5 attempts
+        message: 'Too many login attempts',
+      });
+      
+      const apiLimiter = rateLimit({
+        windowMs: 60 * 1000, // 1 minute
+        max: 100, // 100 requests
+      });
+      
+      app.use('/auth', authLimiter);
+      app.use('/api', apiLimiter);
+    rationale: |
+      Without rate limiting, attackers can attempt thousands of password
+      guesses per second or overwhelm your server with requests.
+    tags:
+      - rate-limiting
+      - brute-force
+      - dos
+
+  - id: use-https-everywhere
+    title: Use HTTPS for all connections
+    description: |
+      All network communication should use TLS/HTTPS. Redirect HTTP to HTTPS
+      and enable HSTS headers.
+    category: security
+    severity: error
+    goodExample: |
+      // Force HTTPS redirect
+      app.use((req, res, next) => {
+        if (!req.secure && req.get('x-forwarded-proto') !== 'https') {
+          return res.redirect(`https://${req.get('host')}${req.url}`);
+        }
+        next();
+      });
+      
+      // Enable HSTS
+      app.use(helmet.hsts({
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      }));
+    rationale: |
+      HTTP traffic can be intercepted and modified by attackers on the
+      network. HTTPS encrypts all communication.
+    tags:
+      - https
+      - tls
+      - encryption
+
+  - id: sanitize-output
+    title: Sanitize output to prevent XSS
+    description: |
+      Escape or sanitize all dynamic content before rendering in HTML.
+      Use frameworks with automatic escaping.
+    category: security
+    severity: error
+    goodExample: |
+      // React automatically escapes
+      function UserProfile({ user }) {
+        return <h1>{user.name}</h1>; // Safe - escaped
+      }
+      
+      // Manual escaping when needed
+      import DOMPurify from 'dompurify';
+      
+      function RichContent({ html }) {
+        const clean = DOMPurify.sanitize(html);
+        return <div dangerouslySetInnerHTML={{ __html: clean }} />;
+      }
+    badExample: |
+      // NEVER do this!
+      element.innerHTML = userInput;
+      
+      // Or this in React
+      <div dangerouslySetInnerHTML={{ __html: userInput }} />
+    rationale: |
+      XSS attacks allow attackers to inject malicious scripts that can
+      steal cookies, session tokens, or perform actions as the user.
+    tags:
+      - xss
+      - output-encoding
+      - sanitization
