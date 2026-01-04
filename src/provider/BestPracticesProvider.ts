@@ -125,7 +125,7 @@ export class BestPracticesProvider extends BaseKnowledgeProvider {
     language?: string,
     options?: { limit?: number; severity?: PracticeSeverity }
   ): Promise<Document[]> {
-    const allDocs = this.store.all();
+private store: any;
     
     return allDocs.filter(doc => {
       if (doc.type !== 'practice') return false;

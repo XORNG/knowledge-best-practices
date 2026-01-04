@@ -1,5 +1,5 @@
-import { startKnowledgeProvider } from '@xorng/template-knowledge';
-import { createLogger } from '@xorng/template-base';
+import { TemplateProvider } from '@xorng/template-base';
+import { TemplateKnowledge } from '@xorng/template-knowledge';
 import { BestPracticesProvider } from './provider/BestPracticesProvider.js';
 import type { ProviderConfig } from './types/index.js';
 
