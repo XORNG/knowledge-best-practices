@@ -1,0 +1,529 @@
+name: Supply Chain Security
+version: "1.0"
+language: general
+description: |
+  Best practices for securing the software supply chain in modern development.
+  Covers dependency management, artifact verification, and build integrity.
+
+practices:
+  # ==========================================================================
+  # DEPENDENCY MANAGEMENT
+  # ==========================================================================
+  - id: verify-package-integrity
+    title: Verify package integrity with lockfiles and checksums
+    description: |
+      Use lockfiles to pin exact dependency versions and verify package
+      integrity through checksums to prevent dependency confusion and
+      supply chain attacks.
+    category: security
+    severity: error
+    goodExample: |
+      // package.json - use exact versions for critical dependencies
+      {
+        "dependencies": {
+          "@modelcontextprotocol/sdk": "1.0.0",  // Exact version
+          "zod": "^3.22.0"  // Allow patches
+        }
+      }
+      
+      // npm ci respects lockfile exactly
+      // .github/workflows/ci.yml
+      - name: Install dependencies
+        run: npm ci  # NOT npm install
+      
+      // Verify with npm audit
+      - name: Verify dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high
+    badExample: |
+      // Using * or latest for versions
+      {
+        "dependencies": {
+          "some-package": "*"  // Dangerous!
+        }
+      }
+      
+      // npm install can resolve to different versions
+      - run: npm install  // May get compromised version
+    rationale: |
+      Supply chain attacks increasingly target npm packages. The ua-parser-js
+      incident showed how a compromised package can affect millions. Lockfiles
+      with checksums ensure you always get the exact code you tested.
+    tags:
+      - supply-chain
+      - npm
+      - integrity
+
+  - id: audit-new-dependencies
+    title: Audit new dependencies before adding them
+    description: |
+      Before adding a new dependency, evaluate its security posture,
+      maintenance status, and necessity for your project.
+    category: security
+    severity: warning
+    goodExample: |
+      // Before adding a dependency, check:
+      
+      // 1. Is it maintained? Check last commit date
+      // 2. How many maintainers? Single maintainer = higher risk
+      // 3. Known vulnerabilities? Check npm audit, Snyk DB
+      // 4. Download count? Very low might indicate typosquatting
+      // 5. Can you implement it yourself? Fewer deps = smaller surface
+      
+      // Use socket.dev or similar for automated checks
+      npx @anthropic-ai/sdk  # Verify publisher
+      
+      // Check package details
+      npm view <package> maintainers
+      npm view <package> time  # See release history
+    badExample: |
+      // Blindly adding dependencies
+      npm install random-utility-package
+      
+      // Not checking if it's the real package
+      npm install loadash  // Typosquatting - should be lodash!
+    rationale: |
+      Every dependency is a potential attack vector. Malicious packages can
+      steal credentials, install backdoors, or mine cryptocurrency. Even
+      legitimate packages can be compromised. Audit carefully.
+    tags:
+      - supply-chain
+      - dependencies
+      - vetting
+
+  - id: minimize-dependency-count
+    title: Minimize the number of dependencies
+    description: |
+      Reduce attack surface by using fewer dependencies. Implement simple
+      functionality yourself instead of importing large libraries.
+    category: security
+    severity: warning
+    goodExample: |
+      // Instead of importing a package for simple tasks:
+      
+      // Don't import left-pad, implement it:
+      function leftPad(str: string, len: number, ch = ' '): string {
+        return str.padStart(len, ch);
+      }
+      
+      // Don't import is-even, just:
+      const isEven = (n: number) => n % 2 === 0;
+      
+      // Use built-in alternatives:
+      // Instead of lodash.get, use optional chaining:
+      const value = obj?.nested?.property ?? defaultValue;
+      
+      // Instead of moment.js, use Intl or date-fns (tree-shakable)
+      const formatted = new Intl.DateTimeFormat('en-US').format(date);
+    badExample: |
+      // 50 dependencies for basic operations
+      import leftPad from 'left-pad';
+      import isEven from 'is-even';
+      import isOdd from 'is-odd';
+      import isNumber from 'is-number';
+      import isString from 'is-string';
+      // Each one is a potential attack vector
+    rationale: |
+      The average npm package has 79 transitive dependencies. Each is a
+      potential vulnerability. The 2021 ua-parser-js attack affected
+      thousands of projects through transitive dependencies.
+    tags:
+      - supply-chain
+      - dependencies
+      - minimalism
+
+  # ==========================================================================
+  # BUILD SECURITY
+  # ==========================================================================
+  - id: use-artifact-attestations
+    title: Use artifact attestations for build provenance
+    description: |
+      Generate and verify attestations for your build artifacts to ensure
+      they came from your CI/CD pipeline and haven't been tampered with.
+    category: security
+    severity: warning
+    goodExample: |
+      # .github/workflows/release.yml
+      name: Release
+      
+      on:
+        push:
+          tags: ['v*']
+      
+      permissions:
+        contents: write
+        id-token: write  # Required for attestation
+        attestations: write
+      
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            
+            - name: Build artifact
+              run: npm run build && npm pack
+            
+            - name: Generate attestation
+              uses: actions/attest-build-provenance@v1
+              with:
+                subject-path: '*.tgz'
+            
+            - name: Create release
+              uses: softprops/action-gh-release@v1
+              with:
+                files: '*.tgz'
+    badExample: |
+      # Building locally and uploading
+      npm run build
+      npm pack
+      # Manually upload to release
+      # No way to verify this came from CI
+    rationale: |
+      Attestations provide cryptographic proof that an artifact was built
+      by your CI/CD system. This prevents attackers from substituting
+      malicious artifacts even if they compromise your release process.
+    tags:
+      - supply-chain
+      - provenance
+      - sigstore
+
+  - id: use-reproducible-builds
+    title: Ensure builds are reproducible
+    description: |
+      Configure your build process to produce identical outputs from
+      identical inputs, allowing verification of build integrity.
+    category: security
+    severity: warning
+    goodExample: |
+      // package.json - pin all versions
+      {
+        "devDependencies": {
+          "typescript": "5.3.3",  // Exact version
+          "esbuild": "0.19.11"   // Exact version
+        }
+      }
+      
+      // tsconfig.json - deterministic output
+      {
+        "compilerOptions": {
+          "declaration": true,
+          "declarationMap": true,
+          "sourceMap": true,
+          "newLine": "lf",  // Consistent line endings
+          "removeComments": false
+        }
+      }
+      
+      // CI - use exact Node version
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'  # Pin Node version
+      
+      // .nvmrc
+      20.10.0
+    badExample: |
+      // Using node:latest in Docker
+      FROM node:latest  // Version can change
+      
+      // Not pinning dev dependencies
+      "devDependencies": {
+        "typescript": "^5"  // Can vary between builds
+      }
+    rationale: |
+      Reproducible builds allow anyone to verify that the published artifact
+      matches the source code. This makes supply chain attacks detectable
+      because the attacker's build won't match the expected output.
+    tags:
+      - supply-chain
+      - builds
+      - verification
+
+  # ==========================================================================
+  # CONTAINER SECURITY
+  # ==========================================================================
+  - id: pin-base-images
+    title: Pin Docker base images with digest
+    description: |
+      Use image digests (SHA256) instead of tags to ensure you always use
+      the exact same base image, preventing supply chain attacks.
+    category: security
+    severity: error
+    goodExample: |
+      # Pin to specific digest
+      FROM node:20-alpine@sha256:abc123...def456
+      
+      # Or use a specific tag that you control
+      FROM ghcr.io/your-org/node-base:20-alpine-v1.0.0
+      
+      # Multi-stage with pinned images
+      FROM node:20@sha256:abc... AS builder
+      WORKDIR /app
+      COPY . .
+      RUN npm ci && npm run build
+      
+      FROM node:20-alpine@sha256:def... AS production
+      COPY --from=builder /app/dist /app/dist
+      CMD ["node", "/app/dist/index.js"]
+    badExample: |
+      # Tags can be overwritten!
+      FROM node:latest
+      FROM node:20
+      FROM node:20-alpine
+      
+      # An attacker who compromises the registry can push
+      # malicious code to these tags
+    rationale: |
+      Docker tags are mutable - they can point to different images over time.
+      An attacker who compromises DockerHub or another registry can push
+      malicious images. Digests are content-addressable and immutable.
+    tags:
+      - supply-chain
+      - docker
+      - images
+
+  - id: sign-container-images
+    title: Sign container images with cosign
+    description: |
+      Use Sigstore/cosign to sign your container images, allowing consumers
+      to verify they came from your build process.
+    category: security
+    severity: warning
+    goodExample: |
+      # .github/workflows/publish.yml
+      name: Publish
+      
+      on:
+        push:
+          tags: ['v*']
+      
+      permissions:
+        contents: read
+        packages: write
+        id-token: write
+      
+      jobs:
+        publish:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+            
+            - name: Build and push
+              id: build
+              uses: docker/build-push-action@v5
+              with:
+                push: true
+                tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            
+            - name: Sign image with cosign
+              uses: sigstore/cosign-installer@v3
+            
+            - name: Sign the image
+              run: |
+                cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+    badExample: |
+      # Pushing without signing
+      docker build -t myimage .
+      docker push myimage:latest
+      # Anyone could push a malicious image with the same tag
+    rationale: |
+      Image signatures provide cryptographic proof of image origin. Combined
+      with verification policies (like Kyverno or OPA), you can ensure only
+      signed images from trusted sources run in your environment.
+    tags:
+      - supply-chain
+      - docker
+      - signing
+
+  # ==========================================================================
+  # REGISTRY SECURITY
+  # ==========================================================================
+  - id: use-private-registries
+    title: Use private registries for internal packages
+    description: |
+      Host internal packages in private registries to prevent dependency
+      confusion attacks and maintain control over your supply chain.
+    category: security
+    severity: error
+    goodExample: |
+      // .npmrc for private registry
+      @xorng:registry=https://npm.pkg.github.com
+      //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+      
+      // package.json - use scoped packages
+      {
+        "name": "@xorng/core",
+        "dependencies": {
+          "@xorng/template-base": "1.0.0",  // From private registry
+          "express": "4.18.2"  // From public npm
+        }
+      }
+      
+      // In CI, authenticate to private registry
+      - name: Setup npm auth
+        run: |
+          echo "@xorng:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_TOKEN }}" >> .npmrc
+    badExample: |
+      // Internal package with common name on public npm
+      {
+        "name": "company-utils",  // Attacker can publish this to npm!
+        "publishConfig": {
+          "registry": "https://internal.company.com/npm"
+        }
+      }
+      
+      // Developer forgets to configure private registry
+      npm install company-utils  // Gets malicious public package!
+    rationale: |
+      Dependency confusion attacks exploit how package managers resolve names.
+      If your internal package name exists on the public registry, an attacker
+      can publish a higher version there. Using scoped packages (@org/name)
+      and private registries prevents this.
+    tags:
+      - supply-chain
+      - registries
+      - dependency-confusion
+
+  - id: verify-package-sources
+    title: Verify package sources match repository code
+    description: |
+      Ensure that published packages contain the same code as the source
+      repository, detecting supply chain compromises.
+    category: security
+    severity: warning
+    goodExample: |
+      // Use npm provenance (npm 9.5+)
+      npm publish --provenance
+      
+      // Verify provenance before installing
+      npm audit signatures
+      
+      // In package.json, enable provenance
+      {
+        "publishConfig": {
+          "provenance": true,
+          "access": "public"
+        }
+      }
+      
+      // GitHub workflow for publishing with provenance
+      - name: Publish with provenance
+        run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    badExample: |
+      // Publishing manually without verification
+      npm publish
+      # Could contain malicious code not in repo
+      
+      // Not checking provenance of dependencies
+      npm install untrusted-package
+      # No way to verify it matches the GitHub repo
+    rationale: |
+      npm provenance uses Sigstore to create cryptographic evidence that a
+      package was built from a specific commit in a specific repository.
+      This helps detect compromised maintainer accounts or malicious insiders.
+    tags:
+      - supply-chain
+      - npm
+      - provenance
+
+  # ==========================================================================
+  # SBOM AND TRANSPARENCY
+  # ==========================================================================
+  - id: generate-sbom
+    title: Generate Software Bill of Materials (SBOM)
+    description: |
+      Create and publish SBOMs for your software to provide transparency
+      about dependencies and enable vulnerability tracking.
+    category: security
+    severity: warning
+    goodExample: |
+      # Generate SBOM in CI
+      - name: Generate SBOM
+        run: npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+      
+      # Or use GitHub's built-in SBOM generation
+      - name: Generate GitHub SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          artifact-name: sbom.spdx.json
+          format: spdx-json
+      
+      # Upload as release artifact
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+      
+      # Also useful for container images
+      - name: Generate container SBOM
+        run: |
+          docker sbom myimage:latest > container-sbom.json
+    badExample: |
+      # No SBOM means:
+      # - No visibility into what's in your software
+      # - Hard to track when vulnerabilities affect you
+      # - Can't comply with regulations requiring SBOMs
+      # - Customers can't assess your security posture
+    rationale: |
+      SBOMs are becoming legally required in some jurisdictions (US Executive
+      Order 14028). They enable rapid response to vulnerabilities like Log4j
+      by immediately identifying affected software. They're essential for
+      enterprise security programs.
+    tags:
+      - supply-chain
+      - sbom
+      - transparency
+
+  - id: monitor-supply-chain-attacks
+    title: Monitor for supply chain attack indicators
+    description: |
+      Use tools to detect potential supply chain attacks such as typosquatting,
+      dependency confusion, and compromised packages.
+    category: security
+    severity: warning
+    goodExample: |
+      // Use Socket.dev for supply chain analysis
+      // .github/workflows/security.yml
+      - name: Socket Security Analysis
+        uses: SocketDev/socket-security-action@v1
+        with:
+          package-lock-file: package-lock.json
+      
+      // Configure alerts for:
+      // - New install scripts in dependencies
+      // - Dependency confusion (internal name collision)
+      // - Typosquatting (similar package names)
+      // - Maintainer changes
+      // - Unusually large version jumps
+      
+      // Manual checks before adding dependencies
+      npx socket npm info <package>
+    badExample: |
+      // Only relying on npm audit
+      npm audit  // Only checks known CVEs, not supply chain attacks
+      
+      // Not monitoring for:
+      // - Typosquatting packages
+      // - Compromised maintainer accounts
+      // - Malicious install scripts
+    rationale: |
+      Traditional security scanners only detect known CVEs. Supply chain attacks
+      often involve zero-day compromises of legitimate packages. Specialized
+      tools can detect suspicious patterns like obfuscated code, network access
+      in install scripts, and sudden changes in package behavior.
+    tags:
+      - supply-chain
+      - monitoring
+      - detection
