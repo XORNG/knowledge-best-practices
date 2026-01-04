@@ -1,28 +1,34 @@
-# XORNG CI/CD Pipeline
-# Comprehensive build, test, and security validation for pull requests
-
 name: CI
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-
-permissions:
-  contents: read
-  pull-requests: write
-
+on: [push, pull_request]
 jobs:
-  # ==========================================================================
-  # Build and Test
-  # ==========================================================================
-  build:
-    name: Build & Test
+  ci:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: |
+          set -e
+          echo "Installing dependencies..."
+          npm ci
+      - name: Run lint
+        run: |
+          set -e
+          echo "Running lint..."
+          npm run lint
+      - name: Run tests
+        run: |
+          set -e
+          echo "Running tests..."
+          npm test
+      - name: Build
+        run: |
+          set -e
+          echo "Building..."
+          npm run build
         node-version: [18, 20, 22]
     
     steps:
